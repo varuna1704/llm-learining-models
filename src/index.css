@@ -128,6 +128,23 @@ body {
 
 .nav-section {
   margin-bottom: 1.5rem;
+  min-height: 0;
+}
+
+.nav-section.scrollable {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+  padding-right: 4px;
+}
+
+.nav-section.scrollable::-webkit-scrollbar {
+  width: 4px;
+}
+
+.nav-section.scrollable::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
 }
 
 .nav-label {

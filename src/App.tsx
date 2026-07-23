@@ -133,7 +133,7 @@ export default function App() {
         </div>
 
         {/* Learning Paths */}
-        <div className="nav-section">
+        <div className="nav-section scrollable">
           <h4 className="nav-label">Flowchart Explorer</h4>
           <ul className="nav-menu">
             {CURRICULUM.map((topic) => (
