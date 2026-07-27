@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ExplanationPanel } from './ExplanationPanel';
@@ -42,31 +41,31 @@ describe('ExplanationPanel Quiz Mode', () => {
     );
 
     // Should display topic title and the "Take Quiz" button
-    expect(screen.getByText('Test Topic')).toBeInTheDocument();
+    expect(screen.getByText('Test Topic')).toBeTruthy();
     const takeQuizBtn = screen.getByText(/Take Quiz/);
-    expect(takeQuizBtn).toBeInTheDocument();
+    expect(takeQuizBtn).toBeTruthy();
 
     // Click Take Quiz
     fireEvent.click(takeQuizBtn);
 
     // Verify first question is shown
-    expect(screen.getByText('Question 1 of 2')).toBeInTheDocument();
-    expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
+    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
+    expect(screen.getByText('What is 2 + 2?')).toBeTruthy();
     
     // Choose incorrect option A ('3')
     const optionA = screen.getByText('3');
     fireEvent.click(optionA);
 
     // Verify explanation is shown
-    expect(screen.getByText(/Basic math states/)).toBeInTheDocument();
+    expect(screen.getByText(/Basic math states/)).toBeTruthy();
 
     // Click Next Question
     const nextBtn = screen.getByText('Next Question →');
     fireEvent.click(nextBtn);
 
     // Verify second question is shown
-    expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
-    expect(screen.getByText('What is the capital of France?')).toBeInTheDocument();
+    expect(screen.getByText('Question 2 of 2')).toBeTruthy();
+    expect(screen.getByText('What is the capital of France?')).toBeTruthy();
 
     // Choose correct option C ('Paris')
     const optionC = screen.getByText('Paris');
@@ -77,8 +76,8 @@ describe('ExplanationPanel Quiz Mode', () => {
     fireEvent.click(finishBtn);
 
     // Verify score screen
-    expect(screen.getByText('Quiz Complete!')).toBeInTheDocument();
-    expect(screen.getByText(/You scored/)).toBeInTheDocument();
-    expect(screen.getByText('50%')).toBeInTheDocument();
+    expect(screen.getByText('Quiz Complete!')).toBeTruthy();
+    expect(screen.getByText(/You scored/)).toBeTruthy();
+    expect(screen.getByText('50%')).toBeTruthy();
   });
 });

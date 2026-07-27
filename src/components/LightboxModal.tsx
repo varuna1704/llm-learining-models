@@ -82,7 +82,7 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
             padding: '1.2rem 1.5rem',
             borderBottom: '1px solid var(--border-color)',
             display: 'flex',
-            justify: 'space-between',
+            justifyContent: 'space-between',
             alignItems: 'center',
             backgroundColor: 'var(--bg-card)',
           }}
@@ -143,7 +143,7 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
             borderTop: '1px solid var(--border-color)',
             backgroundColor: 'var(--bg-dark)',
             display: 'flex',
-            justify: 'space-between',
+            justifyContent: 'space-between',
             alignItems: 'center',
           }}
         >

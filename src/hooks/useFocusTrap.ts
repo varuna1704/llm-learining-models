@@ -25,18 +25,18 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>({
     const container = containerRef.current;
     if (!container) return;
 
+    const getFocusableElements = () => {
+      return Array.from(
+        container.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+    };
+
     // Only focus first element when opening for the first time
     if (!wasOpenRef.current) {
       wasOpenRef.current = true;
       previousActiveElement.current = document.activeElement as HTMLElement;
-
-      const getFocusableElements = () => {
-        return Array.from(
-          container.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-          )
-        ).filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
-      };
 
       const focusable = getFocusableElements();
       if (focusable.length > 0) {

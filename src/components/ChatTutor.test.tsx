@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ChatTutor } from './ChatTutor';
@@ -61,7 +60,7 @@ describe('ChatTutor Component', () => {
     );
 
     // Verify welcome message is in the document
-    expect(screen.getByText(/I am your Semantic AI Tutor/)).toBeInTheDocument();
+    expect(screen.getByText(/I am your Semantic AI Tutor/)).toBeTruthy();
 
     // Input query
     const input = screen.getByPlaceholderText(/Ask a question/);
@@ -73,7 +72,7 @@ describe('ChatTutor Component', () => {
 
     // Wait for the simulated delay and check response
     await waitFor(() => {
-      expect(screen.getByText(/View Glossary: Token/)).toBeInTheDocument();
+      expect(screen.getByText(/View Glossary: Token/)).toBeTruthy();
     }, { timeout: 1000 });
   });
 });

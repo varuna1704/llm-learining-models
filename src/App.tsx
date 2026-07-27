@@ -377,7 +377,7 @@ export default function App() {
             role="tree"
             aria-label="Flowchart Explorer Topics"
           >
-            {CURRICULUM.map((topic, index) => {
+            {CURRICULUM.map((topic) => {
               const isActive = activeTab === 'diagrams' && activeTopic.id === topic.id;
               return (
                 <li
@@ -558,7 +558,7 @@ export default function App() {
           onClose={() => setIsLightboxOpen(false)}
           title={selectedNode ? selectedNode.label : activeTopic.title}
           type={selectedNode ? selectedNode.type : 'Chapter Overview'}
-          description={selectedNode ? selectedNode.shortExplanation : activeTopic.description}
+          description={selectedNode ? selectedNode.shortExplanation : activeTopic.summary}
           details={selectedNode ? selectedNode.detailedExplanation : undefined}
         />
       </main>
