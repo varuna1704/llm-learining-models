@@ -1,3 +1,5 @@
+export const MODELS_LAST_UPDATED = 'July 24, 2026';
+
 export interface AIModel {
   id: string;
   name: string;

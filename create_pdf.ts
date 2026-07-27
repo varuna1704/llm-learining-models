@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
-import { CURRICULUM } from './src/data/curriculum';
+import { CURRICULUM_FULL } from './src/data/curriculum_full';
 
 function generatePDF() {
   const doc = new PDFDocument({
@@ -46,7 +46,7 @@ function generatePDF() {
   doc.fillColor(COLOR_TEXT);
 
   // ================= CURRICULUM GENERATION =================
-  CURRICULUM.forEach((topic) => {
+  CURRICULUM_FULL.forEach((topic) => {
     // Page Header / Title
     doc.fillColor(COLOR_ACCENT)
        .font('Helvetica-Bold')

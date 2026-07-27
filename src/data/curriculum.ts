@@ -27,13 +27,24 @@ export interface SubDiagram {
   edges: DiagramEdge[];
 }
 
-export interface Topic {
+export interface TopicMetadata {
   id: string;
   title: string;
   slug: string;
   summary: string;
   rootDiagramId: string;
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
+}
+
+export interface Topic extends TopicMetadata {
   subDiagrams: { [key: string]: SubDiagram };
+  quiz?: QuizQuestion[];
 }
 
 export interface GlossaryTerm {
@@ -106,32 +117,124 @@ export const GLOSSARY: { [key: string]: GlossaryTerm } = {
   }
 };
 
-import { llmModelsTopic } from './chapters/llm_models';
-import { jsonMemoryTopic } from './chapters/json_memory';
-import { tokenEmbeddingsAttentionTopic } from './chapters/token_embeddings_attention';
-import { ragTopic } from './chapters/rag';
-import { brainAgentLoopTopic } from './chapters/brain_agent_loop';
-import { toolRegistryTopic } from './chapters/tool_registry';
-import { inferenceSamplingTopic } from './chapters/inference_sampling';
-import { workedExamplesTopic } from './chapters/worked_examples';
-import { vectorSearchTopic } from './chapters/vector_search';
-import { evaluationTopic } from './chapters/evaluation';
-import { failureModesTopic } from './chapters/failure_modes';
-import { securityTopic } from './chapters/security';
-import { libraryBasicsTopic } from './chapters/library_basics';
-
-export const CURRICULUM: Topic[] = [
-  llmModelsTopic,
-  jsonMemoryTopic,
-  tokenEmbeddingsAttentionTopic,
-  inferenceSamplingTopic,
-  ragTopic,
-  brainAgentLoopTopic,
-  toolRegistryTopic,
-  workedExamplesTopic,
-  vectorSearchTopic,
-  evaluationTopic,
-  failureModesTopic,
-  securityTopic,
-  libraryBasicsTopic
+export const CURRICULUM: TopicMetadata[] = [
+  {
+    id: 'llm_models',
+    title: 'AI Model Library',
+    slug: 'llm-models',
+    summary: 'Learn the classifications of modern frontier models, their stable taxonomy, and current state-of-the-art snapshots.',
+    rootDiagramId: 'models_root'
+  },
+  {
+    id: 'json_memory',
+    title: 'JSON & Persistable Memory',
+    slug: 'json-memory',
+    summary: 'Conceptualizes persistent storage of facts using a standard JSON file.',
+    rootDiagramId: 'mem_flow_root'
+  },
+  {
+    id: 'token_embeddings_attention',
+    title: 'Tokenization, Embeddings & Attention',
+    slug: 'token-embeddings-attention',
+    summary: 'How the model reads text, processes Byte-Pair Encoding (BPE), and applies self-attention.',
+    rootDiagramId: 'tea_flow_root'
+  },
+  {
+    id: 'inference_sampling',
+    title: 'Inference & Sampling',
+    slug: 'inference-sampling',
+    summary: 'Explores temperature, Top-P, Top-K, and how probabilities translate to sentences.',
+    rootDiagramId: 'samp_flow_root'
+  },
+  {
+    id: 'rag',
+    title: 'Retrieval-Augmented Generation (RAG)',
+    slug: 'rag',
+    summary: 'Retrieval-Augmented Generation workflows (Embeddings → Vector DBs → Chunking → Context injection).',
+    rootDiagramId: 'rag_flow_root'
+  },
+  {
+    id: 'brain_agent_loop',
+    title: 'Brain & Agent Loop',
+    slug: 'brain-agent-loop',
+    summary: 'Standard reasoning cycles: Plan, Act, Observe, Re-evaluate.',
+    rootDiagramId: 'loop_flow_root'
+  },
+  {
+    id: 'tool_registry',
+    title: 'Tool Registry & Function Dispatching',
+    slug: 'tool-registry',
+    summary: 'Schema declarations, function calling, parameter validations, and execution.',
+    rootDiagramId: 'reg_flow_root'
+  },
+  {
+    id: 'worked_examples',
+    title: 'Worked Examples & SDKs',
+    slug: 'worked-examples',
+    summary: 'Complete code walk-throughs for building search tools, weather fetchers, etc.',
+    rootDiagramId: 'ex_flow_root'
+  },
+  {
+    id: 'vector_search',
+    title: 'Vector Search in Practice',
+    slug: 'vector-search',
+    summary: 'Deep dive into semantic similarity, cosine distance, and database indexing.',
+    rootDiagramId: 'v_search_flow_root'
+  },
+  {
+    id: 'evaluation',
+    title: 'Evaluation & Testing',
+    slug: 'evaluation',
+    summary: 'Methods for grading prompts and model outputs against ground truths (eval frameworks).',
+    rootDiagramId: 'eval_flow_root'
+  },
+  {
+    id: 'failure_modes',
+    title: 'Failure Modes & Limitations',
+    slug: 'failure-modes',
+    summary: 'Investigates hallucinations, prompt injections, output structure drift, and mitigation strategies.',
+    rootDiagramId: 'fail_flow_root'
+  },
+  {
+    id: 'security',
+    title: 'LLM Security & Prompt Injection',
+    slug: 'security',
+    summary: 'Best practices on API key storage, input sanitization, and executing sandboxed code.',
+    rootDiagramId: 'sec_flow_root'
+  },
+  {
+    id: 'library_basics',
+    title: 'Standard Libraries & Types',
+    slug: 'library-basics',
+    summary: 'Core library functions, sys, os, and built-ins required for building tools from scratch.',
+    rootDiagramId: 'lib_flow_root'
+  }
 ];
+
+export const TOPIC_LOADERS: { [slug: string]: () => Promise<any> } = {
+  'llm-models': () => import('./chapters/llm_models'),
+  'json-memory': () => import('./chapters/json_memory'),
+  'token-embeddings-attention': () => import('./chapters/token_embeddings_attention'),
+  'inference-sampling': () => import('./chapters/inference_sampling'),
+  'rag': () => import('./chapters/rag'),
+  'brain-agent-loop': () => import('./chapters/brain_agent_loop'),
+  'tool-registry': () => import('./chapters/tool_registry'),
+  'worked-examples': () => import('./chapters/worked_examples'),
+  'vector-search': () => import('./chapters/vector_search'),
+  'evaluation': () => import('./chapters/evaluation'),
+  'failure-modes': () => import('./chapters/failure_modes'),
+  'security': () => import('./chapters/security'),
+  'library-basics': () => import('./chapters/library_basics')
+};
+
+import { QUIZZES } from './quizzes';
+
+export const loadTopicDetails = async (slug: string): Promise<Topic> => {
+  const loader = TOPIC_LOADERS[slug];
+  if (!loader) throw new Error(`Unknown topic slug: ${slug}`);
+  const module = await loader();
+  const keys = Object.keys(module);
+  const topic = module[keys[0]] as Topic;
+  topic.quiz = QUIZZES[topic.id] || [];
+  return topic;
+};

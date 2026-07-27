@@ -1,24 +1,41 @@
-import React, { useState } from 'react';
-import { MODELS } from '../data/models';
+import React, { useState, useCallback } from 'react';
+import { MODELS, MODELS_LAST_UPDATED } from '../data/models';
 import type { AIModel } from '../data/models';
+import { useDebounce } from '../hooks/useDebounce';
+import { ToastContainer, type ToastMessage } from './ToastContainer';
 
 export const ModelLibrary: React.FC = () => {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 250);
+
   const [providerFilter, setProviderFilter] = useState('All');
   const [weightFilter, setWeightFilter] = useState('All');
   const [modalityFilter, setModalityFilter] = useState('All');
   const [selectedModels, setSelectedModels] = useState<AIModel[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [visibleLimit, setVisibleLimit] = useState(12);
+
+  const addToast = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+  }, []);
+
+  const handleDismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
 
   // Extract unique providers for filters
   const providers = ['All', ...Array.from(new Set(MODELS.map(m => m.provider)))];
 
-  // Filtering logic
+  // Filtering logic based on debounced search query
   const filteredModels = MODELS.filter(model => {
+    const query = debouncedSearch.toLowerCase().trim();
     const matchesSearch =
-      model.name.toLowerCase().includes(search.toLowerCase()) ||
-      model.provider.toLowerCase().includes(search.toLowerCase()) ||
-      model.strengths.some(s => s.toLowerCase().includes(search.toLowerCase()));
+      !query ||
+      model.name.toLowerCase().includes(query) ||
+      model.provider.toLowerCase().includes(query) ||
+      model.strengths.some(s => s.toLowerCase().includes(query));
 
     const matchesProvider = providerFilter === 'All' || model.provider === providerFilter;
 
@@ -36,15 +53,18 @@ export const ModelLibrary: React.FC = () => {
     return matchesSearch && matchesProvider && matchesWeight && matchesModality;
   });
 
+  const visibleModels = filteredModels.slice(0, visibleLimit);
+
   const handleSelectModel = (model: AIModel) => {
     if (selectedModels.find(m => m.id === model.id)) {
       setSelectedModels(prev => prev.filter(m => m.id !== model.id));
     } else {
       if (selectedModels.length >= 4) {
-        alert('You can compare a maximum of 4 models at one time.');
+        addToast('You can compare a maximum of 4 models at one time.', 'error');
         return;
       }
       setSelectedModels(prev => [...prev, model]);
+      addToast(`Added ${model.name} to comparison pool.`, 'success');
     }
   };
 
@@ -71,6 +91,15 @@ export const ModelLibrary: React.FC = () => {
 
   return (
     <div className="library-container">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+          Directory of static model configurations and specifications.
+        </span>
+        <span style={{ fontSize: '0.8rem', color: 'var(--color-accent)', backgroundColor: 'var(--bg-darker)', padding: '0.25rem 0.6rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontWeight: 600 }}>
+          Last Updated: {MODELS_LAST_UPDATED}
+        </span>
+      </div>
+
       {/* Search and Filters */}
       <div className="library-filters">
         <div className="search-input-wrapper">
@@ -78,6 +107,10 @@ export const ModelLibrary: React.FC = () => {
           <input
             type="text"
             className="library-search"
+            role="combobox"
+            aria-expanded={false}
+            aria-autocomplete="list"
+            aria-label="Search model directory"
             placeholder="Search by model name, provider, or strengths (e.g. coding, reasoning)..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -126,8 +159,8 @@ export const ModelLibrary: React.FC = () => {
       </div>
 
       {/* Model Cards Grid */}
-      <div className="models-grid">
-        {filteredModels.map(model => {
+      <div className="models-grid" role="grid" aria-label="AI Model Directory">
+        {visibleModels.map(model => {
           const isCompared = !!selectedModels.find(m => m.id === model.id);
           const borderStyle = {
             '--provider-color': getProviderColor(model.provider)
@@ -137,6 +170,7 @@ export const ModelLibrary: React.FC = () => {
             <div
               key={model.id}
               className="model-card"
+              role="row"
               style={borderStyle}
             >
               <div className="model-card-header">
@@ -210,6 +244,18 @@ export const ModelLibrary: React.FC = () => {
           <div className="compare-bar-text">
             Comparing <span style={{ color: 'var(--color-primary)', fontWeight: '700' }}>{selectedModels.length}</span> of 4 models
           </div>
+
+      {visibleLimit < filteredModels.length && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem' }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setVisibleLimit(prev => prev + 12)}
+            style={{ padding: '0.6rem 1.5rem', fontWeight: 600 }}
+          >
+            Load More Models ({filteredModels.length - visibleLimit} remaining)
+          </button>
+        </div>
+      )}
           <div className="compare-chips">
             {selectedModels.map(model => (
               <div key={model.id} className="compare-chip">
@@ -326,6 +372,9 @@ export const ModelLibrary: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Non-blocking Toast Queue */}
+      <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );
 };

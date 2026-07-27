@@ -19,7 +19,7 @@ A visual-first, click-to-explore learning platform where anyone can go from "wha
 2. **Structured curriculum** — topics organized as a tree: LLM Basics → Transformers → Prompting → RAG → AI Agents → Multi-agent systems → Fine-tuning → Evaluation → Tools/Frameworks (LangChain, LlamaIndex, OpenAI SDK, etc.)
 3. **Interactive "how it works" simulators** — e.g., click an AI Agent diagram: click "LLM" node → shows what the LLM's role is in that agent; click "Memory" → explains memory; click "Tool Use" → explains function calling. Same pattern for RAG (Embed → Vector DB → Retrieve → Augment → Generate).
 4. **In-app AI Chat Tutor** — a chatbot restricted to answering from the app's own content (so answers stay consistent with what's taught, not generic internet answers).
-5. **Live Model Library** — auto-updated database of AI models (OpenAI, Anthropic, Google, Meta, Mistral, DeepSeek, Qwen, open-source Hugging Face releases, etc.) with a "why it matters" summary for each, refreshed daily.
+5. **Model Library & Directory** — curated database of AI models (OpenAI, Anthropic, Google, Meta, Mistral, DeepSeek, Qwen, open-source Hugging Face releases, etc.) with a "why it matters" summary for each, updated periodically.
 6. **Cross-platform** — Web app (PWA, works on laptop) + Mobile app (same content, touch-first diagram interactions).
 
 ## 5. Suggested product name direction (just ideas, not decided)

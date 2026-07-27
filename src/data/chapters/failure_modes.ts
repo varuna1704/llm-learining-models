@@ -31,7 +31,7 @@ AI Engineering is less about writing code that works and more about writing defe
 Models are probabilistic next-token predictors. They will occasionally fail, hallucinate, hit API rate limits, or generate cost blowups.
 
 ### 4. Real-Life Analogy
-Like designing a building in an earthquake zone. You do not pretend earthquakes (errors) do not happen; you build dampening joints (mitigations) so the structure doesn\'t collapse.
+Like designing a building in an earthquake zone. You do not pretend earthquakes (errors) do not happen; you build dampening joints (mitigations) so the structure doesn't collapse.
 
 ### 5. Without It
 A single infinite tool loop or rate limit drop will crash your application, resulting in a broken user experience.

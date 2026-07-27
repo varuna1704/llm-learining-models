@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { CURRICULUM, GLOSSARY } from '../data/curriculum';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { GLOSSARY } from '../data/curriculum';
 
 interface ChatMessage {
   id: string;
@@ -28,6 +28,10 @@ interface SearchItem {
   topicSlug?: string;
   subDiagramId?: string;
   nodeLabel?: string;
+  shortExplanation?: string;
+  simpleExplanation?: string;
+  detailedExplanation?: string;
+  topicTitle?: string;
 }
 
 const STOP_WORDS = new Set([
@@ -39,6 +43,15 @@ const STOP_WORDS = new Set([
   'may', 'might', 'must', 'been', 'being', 'have', 'has', 'had', 
   'having', 'works', 'explain', 'tell', 'info', 'information', 'about'
 ]);
+
+interface DocumentVector {
+  doc: SearchItem;
+  tfMap: { [word: string]: number };
+}
+
+let cachedSearchIndex: SearchItem[] = [];
+let cachedDocumentVectors: DocumentVector[] = [];
+let cachedIdfs: { [word: string]: number } = {};
 
 function getLevenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = [];
@@ -82,96 +95,156 @@ function isFuzzyMatch(word1: string, word2: string): boolean {
   return false;
 }
 
-function getWordScore(qWord: string, targetWord: string, isTitle: boolean): number {
-  if (qWord === targetWord) {
-    return isTitle ? 30 : 8;
-  }
-  if (isFuzzyMatch(qWord, targetWord)) {
-    const dist = getLevenshteinDistance(qWord, targetWord);
-    const penalty = dist * (isTitle ? 3 : 1);
-    const baseScore = isTitle ? 25 : 6;
-    return Math.max(isTitle ? 10 : 2, baseScore - penalty);
-  }
-  return 0;
-}
-
 export const ChatTutor: React.FC<ChatTutorProps> = ({
   onNavigateToNode,
   onNavigateToGlossary,
   triggerQuestion
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const hasDraggedRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const initialPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.chat-header-actions')) {
+      return;
+    }
+    isDraggingRef.current = true;
+    hasDraggedRef.current = false;
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    initialPosRef.current = { ...position };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = moveEvent.clientX - dragStartRef.current.x;
+      const dy = moveEvent.clientY - dragStartRef.current.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasDraggedRef.current = true;
+      }
+      setPosition({
+        x: initialPosRef.current.x + dx,
+        y: initialPosRef.current.y + dy,
+      });
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleHeaderClick = (e: React.MouseEvent) => {
+    if (hasDraggedRef.current) {
+      e.stopPropagation();
+      return;
+    }
+    setIsCollapsed(!isCollapsed);
+  };
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       sender: 'assistant',
-      text: "Hello! I am your AI Chat Tutor. Ask me any questions about the curriculum (Tokens, Attention, RAG, AI Agents, or Prompting), and I'll explain them using our grounded database. I can also point you to the correct place in the diagrams!",
+      text: "Hello! I am your Semantic AI Tutor. I use a local client-side embedding model (all-MiniLM-L6-v2) to perform semantic search over our curriculum. Ask me anything (e.g. 'how does the model pick what to say next'), and I'll retrieve the most relevant concepts for you!",
     }
   ]);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom
+  // Semantic RAG states
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelProgress, setModelProgress] = useState('');
+  const [modelReady, setModelReady] = useState(false);
+  const embedderRef = useRef<any>(null);
+  const embeddingsDbRef = useRef<{ [id: string]: number[] } | null>(null);
+
+  // Initialize embedding model and fetch search index on mount
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isCollapsed]);
-
-  // Handle triggered questions from nodes or glossary buttons
-  useEffect(() => {
-    if (triggerQuestion) {
-      setIsCollapsed(false);
-      handleSendMessage(triggerQuestion);
-    }
-  }, [triggerQuestion]);
-
-  // Build the local knowledge search index
-  const getSearchIndex = (): SearchItem[] => {
-    const items: SearchItem[] = [];
-
-    // 1. Index Glossary
-    Object.values(GLOSSARY).forEach(term => {
-      items.push({
-        type: 'glossary',
-        title: term.term,
-        content: `${term.term} ${term.definition} ${term.details}`.toLowerCase(),
-        targetId: term.id
-      });
-    });
-
-    // 2. Index Topics & Nodes
-    CURRICULUM.forEach(topic => {
-      items.push({
-        type: 'topic',
-        title: topic.title,
-        content: `${topic.title} ${topic.summary}`.toLowerCase(),
-        targetId: topic.id,
-        topicSlug: topic.slug
+    // 1. Fetch precomputed vectors and TF-IDF database
+    fetch('/search_index.json')
+      .then(res => res.json())
+      .then(data => {
+        embeddingsDbRef.current = data.embeddings;
+        cachedSearchIndex = data.searchIndex;
+        cachedIdfs = data.idfs;
+        
+        // Map document vectors to include reference to searchIndex items
+        cachedDocumentVectors = data.documentVectors.map((v: any) => {
+          const doc = data.searchIndex.find((item: any) => item.targetId === v.targetId);
+          return {
+            doc: doc!,
+            tfMap: v.tfMap
+          };
+        }).filter((v: any) => v.doc !== undefined);
+      })
+      .catch(err => {
+        console.error('Failed to load precomputed search index database:', err);
       });
 
-      Object.entries(topic.subDiagrams).forEach(([subId, sub]) => {
-        sub.nodes.forEach(node => {
-          items.push({
-            type: 'node',
-            title: node.label,
-            content: `${node.label} ${node.shortExplanation} ${node.simpleExplanation} ${node.detailedExplanation}`.toLowerCase(),
-            targetId: node.id,
-            topicSlug: topic.slug,
-            subDiagramId: subId,
-            nodeLabel: node.label
-          });
+    // 2. Load the transformers.js pipeline dynamically inside browser
+    const loadEmbedder = async () => {
+      setModelLoading(true);
+      setModelProgress('Initializing Semantic Tutor RAG engine...');
+      try {
+        const { env, pipeline } = await import('@xenova/transformers');
+        env.allowLocalModels = false;
+
+        embedderRef.current = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+          progress_callback: (data: any) => {
+            if (data.status === 'downloading') {
+              const pct = data.progress ? ` (${Math.round(data.progress)}%)` : '';
+              setModelProgress(`Downloading semantic model weights${pct}...`);
+            } else if (data.status === 'done') {
+              setModelProgress('Model loaded! Preparing vector search index...');
+            }
+          }
         });
-      });
-    });
 
-    return items;
+        setModelReady(true);
+        setModelLoading(false);
+      } catch (err) {
+        console.error('Error loading embedding model:', err);
+        setModelProgress('Error loading model. Falling back to keyword search.');
+        setModelLoading(false);
+      }
+    };
+
+    loadEmbedder();
+  }, []);
+
+  // Helper to embed query text at runtime
+  const getQueryEmbedding = async (text: string): Promise<number[] | null> => {
+    if (!embedderRef.current) return null;
+    try {
+      const cleanText = text.replace(/\s+/g, ' ').trim().toLowerCase();
+      const output = await embedderRef.current(cleanText, { pooling: 'mean', normalize: true });
+      return Array.from(output.data);
+    } catch (err) {
+      console.error('Failed to embed search query:', err);
+      return null;
+    }
   };
 
-  const searchKnowledge = (query: string): SearchItem | null => {
-    const index = getSearchIndex();
+  // Helper for computing dot product (cosine similarity since vectors are unit-normalized)
+  const dotProduct = (a: number[], b: number[]): number => {
+    let sum = 0;
+    const len = Math.min(a.length, b.length);
+    for (let i = 0; i < len; i++) {
+      sum += a[i] * b[i];
+    }
+    return sum;
+  };
+
+  const searchKnowledge = useCallback(async (query: string): Promise<SearchItem | null> => {
     const cleanQuery = query.toLowerCase().trim();
 
-    // 1. Direct exact title match
-    for (const item of index) {
+    // 1. Direct exact title match (Fast path)
+    for (const item of cachedSearchIndex) {
       if (cleanQuery === item.title.toLowerCase()) {
         return item;
       }
@@ -185,51 +258,83 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
     const activeWords = queryKeywords.length > 0 ? queryKeywords : queryWords;
     if (activeWords.length === 0) return null;
 
+    // 3. Compute semantic search vector in parallel
+    let queryVector: number[] | null = null;
+    if (modelReady && embedderRef.current) {
+      queryVector = await getQueryEmbedding(cleanQuery);
+    }
+
     let bestItem: SearchItem | null = null;
     let maxScore = 0;
 
-    index.forEach(item => {
-      let score = 0;
-      const itemTitle = item.title.toLowerCase();
-      const itemTitleWords = itemTitle.split(/[^a-z0-9]/).filter(w => w.length > 0);
-      const itemContentWords = item.content.split(/[^a-z0-9]/).filter(w => w.length > 0);
+    cachedDocumentVectors.forEach(vector => {
+      let keywordScore = 0;
+      const cleanTitle = vector.doc.title.toLowerCase();
 
       // Exact title contains bonus
-      if (itemTitle.includes(cleanQuery)) {
-        score += 50;
+      if (cleanTitle.includes(cleanQuery)) {
+        keywordScore += 25;
       }
 
-      // Match each active word from query against item title and content words
       activeWords.forEach(qWord => {
-        // Title matches
-        let bestTitleScoreForWord = 0;
-        itemTitleWords.forEach(tWord => {
-          const s = getWordScore(qWord, tWord, true);
-          if (s > bestTitleScoreForWord) {
-            bestTitleScoreForWord = s;
+        let bestWordMatch = '';
+        let bestWordSim = 0; // 0 to 1
+
+        Object.keys(vector.tfMap).forEach(docWord => {
+          if (qWord === docWord) {
+            bestWordMatch = docWord;
+            bestWordSim = 1;
+          } else if (isFuzzyMatch(qWord, docWord)) {
+            const dist = getLevenshteinDistance(qWord, docWord);
+            const sim = Math.max(0.1, 1 - dist / Math.max(qWord.length, docWord.length));
+            if (sim > bestWordSim) {
+              bestWordMatch = docWord;
+              bestWordSim = sim;
+            }
           }
         });
-        score += bestTitleScoreForWord;
 
-        // Content matches
-        let contentScoreForWord = 0;
-        itemContentWords.forEach(cWord => {
-          contentScoreForWord += getWordScore(qWord, cWord, false);
-        });
-        score += Math.min(24, contentScoreForWord);
+        if (bestWordSim > 0) {
+          const tf = vector.tfMap[bestWordMatch];
+          const idf = cachedIdfs[bestWordMatch] || 0.1;
+          keywordScore += bestWordSim * tf * idf;
+        }
       });
 
-      if (score > maxScore) {
-        maxScore = score;
-        bestItem = item;
+      // 4. Calculate semantic similarity if vectors are loaded
+      let semanticScore = 0;
+      if (queryVector && embeddingsDbRef.current && embeddingsDbRef.current[vector.doc.targetId]) {
+        semanticScore = dotProduct(queryVector, embeddingsDbRef.current[vector.doc.targetId]);
+      }
+
+      // Combine scores: semantic score is the base (0 to 1), keyword score is a booster (+0.15 max)
+      // If the embedder is not ready/fails, fall back entirely to keyword scoring normalized roughly to [0,1]
+      const combinedScore = queryVector
+        ? (semanticScore + Math.min(0.15, keywordScore / 80))
+        : (keywordScore / 25);
+
+      if (combinedScore > maxScore) {
+        maxScore = combinedScore;
+        bestItem = vector.doc;
       }
     });
 
-    return maxScore >= 10 ? bestItem : null;
-  };
+    // 5. Apply similarity-based confidence thresholds
+    const threshold = queryVector ? 0.38 : 0.2;
+    return maxScore >= threshold ? bestItem : null;
+  }, [modelReady]);
 
-  const handleSendMessage = (textToSend: string) => {
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleSendMessage = useCallback((textToSend: string) => {
     if (!textToSend.trim()) return;
+
+    // Cancel any previous in-flight query
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const currentSignal = abortControllerRef.current.signal;
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -240,9 +345,11 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
     setMessages(prev => [...prev, userMsg]);
     setInput('');
 
-    // Simulate AI response delay
-    setTimeout(() => {
-      const match = searchKnowledge(textToSend);
+    // Simulate AI response delay with cancellation check
+    setTimeout(async () => {
+      if (currentSignal.aborted) return;
+      const match = await searchKnowledge(textToSend);
+      if (currentSignal.aborted) return;
       let replyText = '';
       let deepLink: ChatMessage['deepLink'] = undefined;
 
@@ -257,38 +364,23 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
             label: `View Glossary: ${term.term}`
           };
         } else if (match.type === 'node') {
-          const topic = CURRICULUM.find(t => t.slug === match.topicSlug);
-          const subDiagram = topic?.subDiagrams[match.subDiagramId!];
-          const node = subDiagram?.nodes.find(n => n.id === match.targetId);
-          
-          if (node) {
-            replyText = `### ${node.label} (${topic?.title})\n\n**What it is:**\n${node.shortExplanation}\n\n**Simple Analogy:**\n${node.simpleExplanation}\n\n**How it works in detail:**\n${node.detailedExplanation}\n\n---\nWould you like me to highlight the **${node.label}** node in the diagram for you?`;
-          } else {
-            replyText = `The node **${match.nodeLabel}** in the **${topic?.title}** flow represents: ${match.content.split('.')[0]}. It coordinates actions inside this architecture by processing key states.\n\nWould you like me to open the diagram at this specific node so you can read the explanation?`;
-          }
+          replyText = `### ${match.title} (${match.topicTitle || 'Curriculum'})\n\n**What it is:**\n${match.shortExplanation || ''}\n\n**Simple Analogy:**\n${match.simpleExplanation || ''}\n\n**How it works in detail:**\n${match.detailedExplanation || ''}\n\n---\nWould you like me to highlight the **${match.title}** node in the diagram for you?`;
           deepLink = {
             topicSlug: match.topicSlug!,
             subDiagramId: match.subDiagramId!,
             nodeId: match.targetId,
-            label: `Focus Node: ${match.nodeLabel}`
+            label: `Focus Node: ${match.title}`
           };
         } else if (match.type === 'topic') {
-          const topic = CURRICULUM.find(t => t.id === match.targetId);
-          const rootSub = topic?.subDiagrams[topic.rootDiagramId];
-          let stepsText = '';
-          if (rootSub) {
-            stepsText = `\n\n**Key steps in this flow:**\n` + rootSub.nodes.map((n) => `• **${n.label}**: ${n.shortExplanation}`).join('\n');
-          }
-          
-          replyText = `### ${topic?.title}\n\n${topic?.summary}${stepsText}\n\n---\nI can open the interactive diagram board for **${topic?.title}** for you now.`;
+          replyText = `### ${match.title}\n\nI can open the interactive diagram board for **${match.title}** for you now.`;
           deepLink = {
-            topicSlug: topic!.slug,
-            subDiagramId: topic!.rootDiagramId,
-            label: `Open Topic Canvas: ${topic?.title}`
+            topicSlug: match.topicSlug!,
+            subDiagramId: match.subDiagramId!,
+            label: `Open Topic Canvas: ${match.title}`
           };
         }
       } else {
-        replyText = "I'm sorry, I couldn't find a direct match in our curriculum for that. Currently, I am programmed to answer questions about:\n• **LLM Basics** (Tokenizers, Autoregression, Temperature)\n• **Transformers** (Embeddings, Positional Encoding, Self-Attention)\n• **Prompting** (System prompt limits, Few-shot templates)\n• **RAG** (Chunking, Vector Databases, Indexing, Augmentation)\n• **AI Agents** (ReAct planning, Memory buffers, Tool use/Function calling)\n• **AI Models Library** (Specs, providers, costs, comparisons)\n\nTry asking: *'What is a token?'* or *'How does self-attention work?'*";
+        replyText = "I'm sorry, I couldn't find a semantic match in our curriculum for that. Currently, I am programmed to answer questions about:\n• **LLM Basics** (Tokenizers, Autoregression, Temperature)\n• **Transformers** (Embeddings, Positional Encoding, Self-Attention)\n• **Prompting** (System prompt limits, Few-shot templates)\n• **RAG** (Chunking, Vector Databases, Indexing, Augmentation)\n• **AI Agents** (ReAct planning, Memory buffers, Tool use/Function calling)\n• **AI Models Library** (Specs, providers, costs, comparisons)\n\nTry asking: *'What is a token?'* or *'How does self-attention work?'* or *'How does the model pick what to say next?'*";
       }
 
       const botMsg: ChatMessage = {
@@ -300,7 +392,20 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
 
       setMessages(prev => [...prev, botMsg]);
     }, 400);
-  };
+  }, [searchKnowledge]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isCollapsed]);
+
+  // Handle triggered questions from nodes or glossary buttons
+  useEffect(() => {
+    if (triggerQuestion) {
+      setIsCollapsed(false);
+      handleSendMessage(triggerQuestion);
+    }
+  }, [triggerQuestion, handleSendMessage]);
 
   const handleDeepLinkClick = (link: NonNullable<ChatMessage['deepLink']>) => {
     if (link.glossaryId) {
@@ -362,12 +467,27 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
   };
 
   return (
-    <div className={`chat-tutor-container ${isCollapsed ? 'collapsed' : ''}`}>
+    <div
+      className={`chat-tutor-container ${isCollapsed ? 'collapsed' : ''}`}
+      role="region"
+      aria-label="Semantic AI Tutor Chat Widget"
+      style={{
+        transform: `translate(${position.x}px, ${position.y}px)`,
+      }}
+    >
       {/* Header */}
-      <div className="chat-header" onClick={() => setIsCollapsed(!isCollapsed)}>
+      <div
+        className="chat-header"
+        onMouseDown={handleHeaderMouseDown}
+        onClick={handleHeaderClick}
+        title="Click to toggle, drag to move"
+      >
         <div className="chat-title-group">
+          <span style={{ cursor: 'grab', fontSize: '0.9rem', color: 'var(--text-muted)', marginRight: '2px' }} title="Drag to move">
+            ⠿
+          </span>
           <div className="chat-dot"></div>
-          <span className="chat-title">AI Tutor {isCollapsed ? '(Offline)' : ''}</span>
+          <span className="chat-title">Semantic AI Tutor (RAG) {isCollapsed ? '(Offline)' : ''}</span>
         </div>
         <div className="chat-header-actions">
           {isCollapsed ? '▲' : '▼'}
@@ -377,7 +497,7 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
       {/* Messages */}
       {!isCollapsed && (
         <>
-          <div className="chat-messages">
+          <div className="chat-messages" role="log" aria-live="polite">
             {messages.map((msg) => (
               <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                 <div className={`chat-bubble ${msg.sender}`}>
@@ -394,6 +514,24 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
                 </div>
               </div>
             ))}
+            {(modelLoading || (!modelReady && modelProgress)) && (
+              <div style={{
+                padding: '0.6rem 0.8rem',
+                margin: '0.4rem 0.8rem',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.2)',
+                fontSize: '0.75rem',
+                color: '#38bdf8',
+                fontFamily: 'monospace',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <span className="spin-loader">🔄</span>
+                <span>{modelProgress}</span>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -408,11 +546,15 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
             <input
               type="text"
               className="chat-input"
+              role="combobox"
+              aria-expanded={!isCollapsed}
+              aria-autocomplete="list"
+              aria-label="Ask Semantic AI Tutor"
               placeholder="Ask a question..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
-            <button type="submit" className="chat-submit-btn">
+            <button type="submit" className="chat-submit-btn" aria-label="Send message">
               ➜
             </button>
           </form>

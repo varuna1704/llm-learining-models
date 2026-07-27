@@ -31,7 +31,7 @@ Evaluation is the systemic process of measuring model output quality against a g
 Without a test suite, you can never tell if tweaking a system prompt made the assistant better or broke basic features.
 
 ### 4. Real-Life Analogy
-Like grading a test paper. You do not just glance at the student\'s answers and say "looks fine"; you grade each question against an answer key (Ground Truth).
+Like grading a test paper. You do not just glance at the student's answers and say "looks fine"; you grade each question against an answer key (Ground Truth).
 
 ### 5. Without It
 You will constantly introduce regressions, breaking tool-calling parameters while fixing spelling, without noticing it.

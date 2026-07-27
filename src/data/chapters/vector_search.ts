@@ -28,10 +28,10 @@ Compare Term Frequency-Inverse Document Frequency (TF-IDF) with dense semantic e
 TF-IDF is a statistical sparse-vector search technique that scores how important a word is to a document in a collection.
 
 ### 3. Why do we need it?
-Without it, you have no local fallback if the user\'s machine cannot load deep sentence-transformer models.
+Without it, you have no local fallback if the user's machine cannot load deep sentence-transformer models.
 
 ### 4. Real-Life Analogy
-Like using an index at the back of a textbook. You look up the exact word "cappuccino" and find page numbers. If the book says "coffee" instead, you will miss it because the exact spelling doesn\'t match.
+Like using an index at the back of a textbook. You look up the exact word "cappuccino" and find page numbers. If the book says "coffee" instead, you will miss it because the exact spelling doesn't match.
 
 ### 5. Without It
 If embedding servers are offline, local semantic searches will crash.

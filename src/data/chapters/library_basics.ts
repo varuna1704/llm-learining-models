@@ -25,7 +25,7 @@ export const libraryBasicsTopic: Topic = {
 We need to read environment variables (like secret keys) and verify directory existence on different operating systems.
 
 ### 2. Analogy
-It is like a telephone connecting your Python script to the operating system\'s control room, letting you check settings or order new folders.
+It is like a telephone connecting your Python script to the operating system's control room, letting you check settings or order new folders.
 
 ### 3. Without It
 Your script cannot check configuration settings or create the \`data/\` folder, causing crash errors on boot.

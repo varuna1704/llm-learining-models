@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { SubDiagram, DiagramNode } from '../data/curriculum';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
 interface DiagramCanvasProps {
   subDiagram: SubDiagram;
@@ -7,6 +8,11 @@ interface DiagramCanvasProps {
   onSelectNode: (node: DiagramNode | null) => void;
   breadcrumbs: string[];
   onNavigateBreadcrumb: (index: number) => void;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+  pan: { x: number; y: number };
+  onPanChange: (pan: { x: number; y: number }) => void;
+  preventInitialCenter?: boolean;
 }
 
 export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
@@ -15,26 +21,28 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
   onSelectNode,
   breadcrumbs,
   onNavigateBreadcrumb,
+  zoom,
+  onZoomChange,
+  pan,
+  onPanChange,
+  preventInitialCenter = false,
 }) => {
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 50, y: 50 });
-  const [isDragging, setIsDragging] = useState(false);
+  const [isListView, setIsListView] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+
+  const isDraggingRef = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const isFirstMountRef = useRef(true);
 
-  // Reset pan/zoom on diagram change
-  useEffect(() => {
-    resetZoom();
-  }, [subDiagram.id]);
-
-  const resetZoom = () => {
+  const resetZoom = useCallback(() => {
     if (!containerRef.current) return;
     const { width, height } = containerRef.current.getBoundingClientRect();
     
     // Find boundary of nodes to center them
     if (subDiagram.nodes.length === 0) {
-      setZoom(1);
-      setPan({ x: 50, y: 50 });
+      onZoomChange(1);
+      onPanChange({ x: 50, y: 50 });
       return;
     }
 
@@ -61,8 +69,59 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
     const panX = (width - graphW * newZoom) / 2 - minX * newZoom;
     const panY = (height - graphH * newZoom) / 2 - minY * newZoom;
 
-    setZoom(newZoom);
-    setPan({ x: panX, y: panY });
+    onZoomChange(newZoom);
+    onPanChange({ x: panX, y: panY });
+  }, [subDiagram.nodes, onZoomChange, onPanChange]);
+
+  // Reset pan/zoom on diagram change
+  useEffect(() => {
+    if (isFirstMountRef.current && preventInitialCenter) {
+      isFirstMountRef.current = false;
+      return;
+    }
+    resetZoom();
+  }, [subDiagram.id, resetZoom, preventInitialCenter]);
+
+  const touchStartDistRef = useRef<number | null>(null);
+
+  const getTouchDistance = (t1: React.Touch, t2: React.Touch) => {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const target = e.target as SVGElement;
+      if (target.closest('.node-group')) return;
+      isDraggingRef.current = true;
+      dragStart.current = { x: touch.clientX - pan.x, y: touch.clientY - pan.y };
+    } else if (e.touches.length === 2) {
+      isDraggingRef.current = false;
+      touchStartDistRef.current = getTouchDistance(e.touches[0], e.touches[1]);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length === 1 && isDraggingRef.current) {
+      const touch = e.touches[0];
+      onPanChange({
+        x: touch.clientX - dragStart.current.x,
+        y: touch.clientY - dragStart.current.y,
+      });
+    } else if (e.touches.length === 2 && touchStartDistRef.current !== null) {
+      const newDist = getTouchDistance(e.touches[0], e.touches[1]);
+      const scale = newDist / touchStartDistRef.current;
+      touchStartDistRef.current = newDist;
+      const nextZoom = Math.min(3, Math.max(0.3, zoom * scale));
+      onZoomChange(nextZoom);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isDraggingRef.current = false;
+    touchStartDistRef.current = null;
   };
 
   const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -70,20 +129,20 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
     const target = e.target as SVGElement;
     if (target.closest('.node-group')) return;
 
-    setIsDragging(true);
+    isDraggingRef.current = true;
     dragStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   };
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!isDragging) return;
-    setPan({
+    if (!isDraggingRef.current) return;
+    onPanChange({
       x: e.clientX - dragStart.current.x,
       y: e.clientY - dragStart.current.y
     });
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    isDraggingRef.current = false;
   };
 
   const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
@@ -104,11 +163,11 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
     const dx = mouseX - pan.x;
     const dy = mouseY - pan.y;
 
-    setPan({
+    onPanChange({
       x: mouseX - dx * (boundedZoom / zoom),
       y: mouseY - dy * (boundedZoom / zoom)
     });
-    setZoom(boundedZoom);
+    onZoomChange(boundedZoom);
   };
 
   // Helper for generating smart Bezier curve connections
@@ -167,165 +226,256 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
     return { x: midX, y: midY };
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    const panStep = 50;
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      onPanChange({ x: pan.x, y: pan.y + panStep });
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      onPanChange({ x: pan.x, y: pan.y - panStep });
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      onPanChange({ x: pan.x + panStep, y: pan.y });
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      onPanChange({ x: pan.x - panStep, y: pan.y });
+    } else if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      onZoomChange(Math.min(3, zoom * 1.2));
+    } else if (e.key === '-') {
+      e.preventDefault();
+      onZoomChange(Math.max(0.3, zoom / 1.2));
+    }
+  };
+
   return (
     <div className="canvas-wrapper" ref={containerRef}>
       <div className="canvas-instruction">
-        🖱️ Drag canvas to pan • Scroll to zoom • Click nodes to explore
+        🖱️ Drag canvas to pan • Scroll/Keys to zoom • Click nodes to explore
       </div>
 
-      {/* SVG Canvas */}
-      <svg
-        className="canvas-svg"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        onClick={(e) => {
-          if ((e.target as SVGElement).tagName === 'svg') {
-            onSelectNode(null);
-          }
-        }}
-      >
-        <defs>
-          {/* Arrowhead marker definition */}
-          <marker
-            id="arrow"
-            viewBox="0 0 10 10"
-            refX="8"
-            refY="5"
-            markerWidth="5"
-            markerHeight="5"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--text-muted)" />
-          </marker>
-        </defs>
-
-        {/* Group with pan & zoom transformation */}
-        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* Connection Lines (Edges) */}
-          {subDiagram.edges.map((edge, index) => {
-            const path = getSmartEdgePath(edge.from, edge.to);
-            const labelPos = getSmartLabelPosition(edge.from, edge.to);
-            
-            return (
-              <g key={index}>
-                <path
-                  d={path}
-                  fill="none"
-                  stroke={edge.animated ? 'var(--color-primary)' : 'var(--text-muted)'}
-                  strokeWidth={edge.animated ? 2 : 1.5}
-                  markerEnd="url(#arrow)"
-                  className={`svg-connection-line ${edge.animated ? 'animated' : ''}`}
-                  opacity={selectedNode ? (selectedNode.id === edge.from || selectedNode.id === edge.to ? 0.9 : 0.25) : 0.6}
+      {isListView ? (
+        <div
+          className="canvas-list-view"
+          role="region"
+          aria-label="Text-based Diagram Node List"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            padding: '2rem',
+            overflowY: 'auto',
+            backgroundColor: 'var(--bg-darker)',
+            zIndex: 4,
+          }}
+        >
+          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '1rem', fontFamily: 'var(--font-display)' }}>
+            📊 Diagram Nodes List: {subDiagram.id}
+          </h3>
+          <ul style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingLeft: '1rem' }}>
+            {subDiagram.nodes.map((node) => {
+              const isSelected = selectedNode?.id === node.id;
+              return (
+                <li
+                  key={node.id}
                   style={{
-                    transition: 'opacity var(--transition-fast)'
+                    padding: '0.8rem 1rem',
+                    borderRadius: '8px',
+                    backgroundColor: isSelected ? 'rgba(139, 92, 246, 0.2)' : 'var(--bg-card)',
+                    border: `1px solid ${isSelected ? 'var(--color-primary)' : 'var(--border-color)'}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.25rem',
                   }}
-                />
-                {edge.label && (
-                  <g 
-                    transform={`translate(${labelPos.x}, ${labelPos.y})`}
-                    opacity={selectedNode ? (selectedNode.id === edge.from || selectedNode.id === edge.to ? 1 : 0.15) : 0.8}
-                  >
-                    <rect
-                      x="-65"
-                      y="-9"
-                      width="130"
-                      height="16"
-                      rx="3"
-                      fill="var(--bg-darker)"
-                      stroke="var(--border-color)"
-                      strokeWidth="0.5"
-                    />
-                    <text
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fill="var(--text-secondary)"
-                      fontSize="9px"
-                      fontWeight="500"
+                  onClick={() => onSelectNode(node)}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{node.label}</strong>
+                    <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', borderRadius: '4px', backgroundColor: `var(--color-node-${node.type})`, color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {node.type}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
+                    {node.shortExplanation}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : (
+        /* SVG Canvas */
+        <svg
+          className="canvas-svg"
+          tabIndex={0}
+          role="region"
+          aria-label="Interactive Flowchart Diagram Board (Use Arrow keys to pan, + and - to zoom)"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          onWheel={handleWheel}
+          onKeyDown={handleKeyDown}
+          onClick={(e) => {
+            if ((e.target as SVGElement).tagName === 'svg') {
+              onSelectNode(null);
+            }
+          }}
+        >
+          <defs>
+            {/* Arrowhead marker definition */}
+            <marker
+              id="arrow"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--text-muted)" />
+            </marker>
+          </defs>
+
+          {/* Group with pan & zoom transformation */}
+          <g className="canvas-transform-group" transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+            {/* Connection Lines (Edges) */}
+            {subDiagram.edges.map((edge, index) => {
+              const path = getSmartEdgePath(edge.from, edge.to);
+              const labelPos = getSmartLabelPosition(edge.from, edge.to);
+              
+              return (
+                <g key={index}>
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={edge.animated ? 'var(--color-primary)' : 'var(--text-muted)'}
+                    strokeWidth={edge.animated ? 2 : 1.5}
+                    markerEnd="url(#arrow)"
+                    className={`svg-connection-line ${edge.animated ? 'animated' : ''}`}
+                    opacity={selectedNode ? (selectedNode.id === edge.from || selectedNode.id === edge.to ? 0.9 : 0.25) : 0.6}
+                    style={{
+                      transition: prefersReducedMotion ? 'none' : 'opacity var(--transition-fast)'
+                    }}
+                  />
+                  {edge.label && (
+                    <g 
+                      transform={`translate(${labelPos.x}, ${labelPos.y})`}
+                      opacity={selectedNode ? (selectedNode.id === edge.from || selectedNode.id === edge.to ? 1 : 0.15) : 0.8}
                     >
-                      {edge.label}
-                    </text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
+                      <rect
+                        x="-65"
+                        y="-9"
+                        width="130"
+                        height="16"
+                        rx="3"
+                        fill="var(--bg-darker)"
+                        stroke="var(--border-color)"
+                        strokeWidth="0.5"
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill="var(--text-secondary)"
+                        fontSize="9px"
+                        fontWeight="500"
+                      >
+                        {edge.label}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
 
-          {/* Diagram Nodes */}
-          {subDiagram.nodes.map((node) => {
-            const isSelected = selectedNode?.id === node.id;
-            
-            return (
-              <g
-                key={node.id}
-                transform={`translate(${node.x}, ${node.y})`}
-                className={`node-group node-${node.type} ${isSelected ? 'selected' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectNode(node);
-                }}
-              >
-                {/* Node Box */}
-                <rect
-                  width={node.width}
-                  height={node.height}
-                  className="node-rect"
-                />
-
-                {/* Node Type Stripe Header */}
-                <rect
-                  x="1.5"
-                  y="1.5"
-                  width={node.width - 3}
-                  height="12"
-                  fill={`var(--color-node-${node.type})`}
-                  className="node-badge"
-                  opacity="0.9"
-                />
-                
-                <text
-                  x={node.width / 2}
-                  y="8"
-                  textAnchor="middle"
-                  className="node-type-text"
+            {/* Diagram Nodes */}
+            {subDiagram.nodes.map((node) => {
+              const isSelected = selectedNode?.id === node.id;
+              
+              return (
+                <g
+                  key={node.id}
+                  data-node-id={node.id}
+                  transform={`translate(${node.x}, ${node.y})`}
+                  className={`node-group node-${node.type} ${isSelected ? 'selected' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectNode(node);
+                  }}
                 >
-                  {node.type}
-                </text>
+                  {/* Node Box */}
+                  <rect
+                    width={node.width}
+                    height={node.height}
+                    className="node-rect"
+                  />
 
-                {/* Node Label Text */}
-                <text
-                  x={node.width / 2}
-                  y={node.height / 2 + 6}
-                  textAnchor="middle"
-                  className="node-title-text"
-                >
-                  {node.label}
-                </text>
-
-                {/* Zoom In/Sub-diagram Indicator */}
-                {node.childDiagramId && (
+                  {/* Node Type Stripe Header */}
+                  <rect
+                    x="1.5"
+                    y="1.5"
+                    width={node.width - 3}
+                    height="12"
+                    fill={`var(--color-node-${node.type})`}
+                    className="node-badge"
+                    opacity="0.9"
+                  />
+                  
                   <text
-                    x={node.width - 15}
-                    y={node.height - 8}
+                    x={node.width / 2}
+                    y="8"
                     textAnchor="middle"
-                    className="node-subdiagram-indicator"
+                    className="node-type-text"
                   >
-                    🔍
+                    {node.type}
                   </text>
-                )}
-              </g>
-            );
-          })}
-        </g>
-      </svg>
+
+                  {/* Node Label Text */}
+                  <text
+                    x={node.width / 2}
+                    y={node.height / 2 + 6}
+                    textAnchor="middle"
+                    className="node-title-text"
+                  >
+                    {node.label}
+                  </text>
+
+                  {/* Zoom In/Sub-diagram Indicator */}
+                  {node.childDiagramId && (
+                    <text
+                      x={node.width - 15}
+                      y={node.height - 8}
+                      textAnchor="middle"
+                      className="node-subdiagram-indicator"
+                    >
+                      🔍
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      )}
 
       {/* Control Buttons */}
       <div className="canvas-controls">
-        <button className="btn" onClick={() => setZoom(z => Math.min(3, z * 1.2))} style={{ padding: '0.4rem 0.6rem' }}>+</button>
-        <button className="btn" onClick={() => setZoom(z => Math.max(0.3, z / 1.2))} style={{ padding: '0.4rem 0.6rem' }}>-</button>
-        <button className="btn" onClick={resetZoom} style={{ fontSize: '0.75rem', padding: '0.4rem 0.75rem' }}>Center View</button>
+        <button
+          className="btn"
+          onClick={() => setIsListView(!isListView)}
+          style={{ fontSize: '0.75rem', padding: '0.4rem 0.75rem' }}
+          aria-label={isListView ? 'Switch to Canvas View' : 'Switch to List View'}
+        >
+          {isListView ? '🎨 Canvas View' : '📋 View as List'}
+        </button>
+        <button className="btn" onClick={() => onZoomChange(Math.min(3, zoom * 1.2))} style={{ padding: '0.4rem 0.6rem' }} aria-label="Zoom in">+</button>
+        <button className="btn" onClick={() => onZoomChange(Math.max(0.3, zoom / 1.2))} style={{ padding: '0.4rem 0.6rem' }} aria-label="Zoom out">-</button>
+        <button className="btn" onClick={resetZoom} style={{ fontSize: '0.75rem', padding: '0.4rem 0.75rem' }} aria-label="Center canvas view">Center View</button>
       </div>
 
       {/* Breadcrumb path for sub-diagrams */}

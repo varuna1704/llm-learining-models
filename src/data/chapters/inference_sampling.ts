@@ -34,7 +34,7 @@ Without sampling settings, models would either repeat the exact same text every 
 Like choosing an item from a restaurant menu. Raw scores are your interest levels. Sampling settings determine whether you always pick your #1 favorite (greedy) or occasionally try your #2 or #3 choice for variety (temperature).
 
 ### 5. Without It
-You cannot adjust the creativity, determinism, or diversity of the AI\'s replies.
+You cannot adjust the creativity, determinism, or diversity of the AI's replies.
 
 ### 6. Install
 \`\`\`bash

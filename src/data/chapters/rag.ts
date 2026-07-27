@@ -34,7 +34,7 @@ LLMs are frozen in time at the end of their training. They do not know your priv
 Like an open-book exam. Instead of guessing from memory, the student (LLM) is handed a reference sheet (Retrieved Context) containing the answers.
 
 ### 5. Without It
-The assistant would hallucinate factually incorrect facts or tell you it doesn\'t have access to your personal files.
+The assistant would hallucinate factually incorrect facts or tell you it doesn't have access to your personal files.
 
 ### 6. Install
 \`\`\`bash
@@ -50,10 +50,10 @@ prompt = f"Answer using this context: {context}\\n\\nQuestion: {query}"
 ### 8. Example
 \`\`\`python
 # Simple Context Injection
-context = "Varuna\'s meeting is at 5 PM."
-query = "When is Varuna\'s meeting?"
+context = "Varuna's meeting is at 5 PM."
+query = "When is Varuna's meeting?"
 prompt = f"Context: {context}\\nQuestion: {query}\\nAnswer:"
-# Claude returns: "Varuna\'s meeting is at 5 PM."
+# Claude returns: "Varuna's meeting is at 5 PM."
 \`\`\``
         },
         {
@@ -100,14 +100,14 @@ Query -> Embed Query -> Query Vector DB -> Extract Chunks -> Append to Prompt
           shortExplanation: 'The LLM processes the augmented prompt and writes a grounded answer.',
           simpleExplanation: 'The AI reads the notes you attached and answers based strictly on those facts.',
           detailedExplanation: `### 14. Common Mistakes
-- Injecting too many chunks, which overflows the context window or dilutes the model\'s attention.
+- Injecting too many chunks, which overflows the context window or dilutes the model's attention.
 - Lack of metadata tracking, making it impossible to attribute sources.
 
 ### 15. Mini Exercise
 Build a script that constructs a RAG prompt from a hardcoded list of text lines.
 
 ### 16. Challenge
-Add a confidence threshold: if the closest retrieved document has a similarity score below 0.4, tell the user "I couldn\'t find any relevant notes to answer this question."
+Add a confidence threshold: if the closest retrieved document has a similarity score below 0.4, tell the user "I couldn't find any relevant notes to answer this question."
 
 ### 17. LLM Connection
 #### Level 1: Python Basics

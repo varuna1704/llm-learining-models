@@ -543,6 +543,7 @@ body {
   flex-grow: 1;
   overflow-y: auto;
   padding: 1.5rem;
+  padding-bottom: 5rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -610,7 +611,7 @@ body {
   background-color: rgba(6, 182, 212, 0.08);
 }
 
-/* Chat Tutor Window (Collapsible, floats in bottom right) */
+/* Chat Tutor Window (Collapsible, floats in bottom right, draggable) */
 .chat-tutor-container {
   position: absolute;
   bottom: 1.5rem;
@@ -626,12 +627,12 @@ body {
   flex-direction: column;
   overflow: hidden;
   z-index: 9;
-  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s ease;
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chat-tutor-container.collapsed {
   height: 48px;
-  width: 180px;
+  width: 220px;
 }
 
 .chat-header {
@@ -642,8 +643,13 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 1rem;
-  cursor: pointer;
+  cursor: grab;
+  user-select: none;
   flex-shrink: 0;
+}
+
+.chat-header:active {
+  cursor: grabbing;
 }
 
 .chat-title-group {
@@ -1240,4 +1246,14 @@ body {
     display: block;
     overflow-x: auto;
   }
+}
+
+/* Spinner animation for model loading */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin-loader {
+  display: inline-block;
+  animation: spin 1.5s linear infinite;
 }

@@ -1,6 +1,44 @@
 # 🎛️ ModelMap — AI & LLM Visual Learning Platform
 
-ModelMap is an interactive, visual-first learning application designed to help users go from "what is an LLM" to understanding complex AI workflows (like RAG and Agents) using click-to-explore flowcharts, dynamic model specifications, and an in-app AI tutor.
+ModelMap is an interactive, visual-first learning application designed to help users go from "what is an LLM" to understanding complex AI workflows (like RAG and Agents) using click-to-explore flowcharts, dynamic model specifications, interactive quizzes, and an in-app Semantic RAG AI tutor.
+
+---
+
+## 📸 Screenshots & UI Showcase
+
+### 1. 📊 Interactive Flowchart Canvas
+*Visual SVG diagram canvas with drag-to-pan, scroll-to-zoom, breadcrumb navigation, and an accessible text-based List View alternative.*
+![Interactive Flowchart Canvas](screenshots/01_homepage_canvas.png)
+
+---
+
+### 2. 📝 Node Explanation & Specifications Drawer
+*Slide-out panel providing ELI5 analogies, detailed technical descriptions, glossary links, and code integration specifications.*
+![Node Explanation Drawer](screenshots/02_node_explanation_drawer.png)
+
+---
+
+### 3. 🎓 Interactive Chapter Quizzes
+*Step-by-step chapter comprehension quizzes with instant feedback, scoring progress, and explanation breakdowns.*
+![Interactive Quiz](screenshots/03_interactive_quiz.png)
+
+---
+
+### 4. 🔍 Fullscreen Concept Lightbox Preview
+*Full-screen concept lightbox preview with keyboard and swipe navigation controls (`ArrowLeft`, `ArrowRight`, `Escape`).*
+![Fullscreen Lightbox Preview](screenshots/04_fullscreen_lightbox.png)
+
+---
+
+### 5. 🤖 Semantic AI Tutor (Client-Side RAG)
+*Draggable, collapsible AI assistant powered by Transformers.js (`all-MiniLM-L6-v2`) and precomputed TF-IDF + Levenshtein fuzzy search indices.*
+![Semantic AI Tutor RAG](screenshots/05_semantic_ai_tutor.png)
+
+---
+
+### 6. ⚡ AI Model Library & Specifications Directory
+*Searchable directory of 25+ top proprietary and open-weights models (OpenAI, Anthropic, Google, Meta, DeepSeek, etc.) with multi-attribute filtering, debounced search, WAI-ARIA grid semantics, and a side-by-side comparison matrix.*
+![AI Model Library](screenshots/06_model_library.png)
 
 ---
 
@@ -9,22 +47,21 @@ ModelMap is an interactive, visual-first learning application designed to help u
 1. **Click-to-Explore Flowcharts**:
    - Visual diagrams for core concepts: **LLM Basics**, **Transformer Architecture**, **Prompt Construction**, **RAG**, and **AI Agents**.
    - Nodes expand into contextual side drawers explaining technical steps.
-   - Zoom in/out, pan, and enter nested sub-diagrams (e.g., explore the *Self-Attention Layer* inside the Transformer, or *Function Calling* inside AI Agents).
+   - Zoom in/out, pan, keyboard controls, touch pinch-to-zoom, and enter nested sub-diagrams.
 
-2. **Themed Highlight & Glow Effects**:
-   - Beautiful, smooth, and reactive hover states customized to each node type (e.g., input, process, LLM, database, memory, tool).
+2. **Semantic RAG AI Chat Tutor**:
+   - Client-side embedding search engine using `@xenova/transformers` (`all-MiniLM-L6-v2`) to answer user questions about the curriculum.
+   - Draggable by mouse anywhere on screen with non-blocking UI position.
 
-3. **AI Model Specifications Directory**:
-   - A fully searchable database of top proprietary and open-weights models (OpenAI, Anthropic, Google, Meta, DeepSeek, Mistral, and more).
-   - Filter models by provider, access type (Open vs. Closed), or modality (Text vs. Multimodal).
-   - Side-by-side comparison matrix of up to 4 models detailing release dates, context window lengths, input/output costs, and strengths.
+3. **Interactive Chapter Quizzes**:
+   - End-of-chapter comprehension checks with progress tracking, score breakdown, and answer rationales.
 
-4. **Contextual AI Chat Tutor**:
-   - Grounded chatbot helper that answers questions specifically tailored to the curriculum.
-   - Deep-links directly to flowchart nodes from the tutor's answers.
+4. **AI Model Specifications Directory**:
+   - Searchable database of top models with provider, modality, context window lengths, costs, and access filters.
+   - Compare up to 4 models side-by-side.
 
-5. **Inline Glossary & Tooltips**:
-   - Instantly matches key terms (like *tokens*, *embeddings*, *context windows*, and *hallucinations*) inline with hovering tooltips and full definitions.
+5. **Accessibility & Performance First**:
+   - Full keyboard navigation (`Tab`, `Escape`, `Arrow` keys), WAI-ARIA combobox & treeview roles, non-blocking toast notifications, and `prefers-reduced-motion` compliance.
 
 ---
 
@@ -32,8 +69,10 @@ ModelMap is an interactive, visual-first learning application designed to help u
 
 - **Framework**: React 19 + TypeScript
 - **Bundler & Build Tool**: Vite 8
+- **Embeddings & ML**: `@xenova/transformers` (Client-side `all-MiniLM-L6-v2`)
+- **Testing**: Playwright E2E Test Suite
 - **Styling**: Vanilla CSS (Cyberpunk dark slate custom design system using CSS variables)
-- **Linter**: Oxlint (High-performance JS/TS linter)
+- **Linter**: Oxlint
 
 ---
 
@@ -62,7 +101,14 @@ Run the development server locally:
 ```bash
 npm run dev
 ```
-Open [http://localhost:5173](http://localhost:5173) in your browser to view the application.
+Open [http://localhost:5174](http://localhost:5174) in your browser to view the application.
+
+### Running End-to-End Tests
+
+Execute Playwright E2E tests:
+```bash
+npx playwright test
+```
 
 ### Building for Production
 
@@ -71,10 +117,3 @@ Compile and bundle the application for production:
 npm run build
 ```
 The output will be generated in the `dist/` directory.
-
-### Code Quality
-
-Run the high-speed linter:
-```bash
-npm run lint
-```
