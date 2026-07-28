@@ -444,6 +444,15 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
             🔍 Zoom Into Sub-Diagram
           </button>
         )}
+        {quiz.length > 0 && (
+          <button
+            className="btn"
+            onClick={() => setQuizMode(true)}
+            style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+          >
+            🧪 Take Quiz
+          </button>
+        )}
         <button
           className="btn"
           onClick={() => onAskTutor(`How does the ${node.label} node work?`)}

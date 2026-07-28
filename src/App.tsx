@@ -464,6 +464,17 @@ export default function App() {
               <>
                 <button
                   className="btn"
+                  onClick={() => {
+                    setSelectedNode(null);
+                    setIsPanelOpen(true);
+                  }}
+                  aria-label="Open Chapter Quiz"
+                  style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', borderColor: 'var(--color-primary)', color: '#fff' }}
+                >
+                  🧪 Take Quiz
+                </button>
+                <button
+                  className="btn"
                   onClick={() => setIsLightboxOpen(true)}
                   aria-label="Open Fullscreen Concept Lightbox Preview"
                 >
