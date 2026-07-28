@@ -2,4 +2,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://varuna-nikam.vercel.app/sitemap.xml
+Sitemap: https://llm-learining-models.vercel.app/sitemap.xml
