@@ -171,8 +171,10 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
     }
   }, [isCollapsed, triggerQuestion]);
 
-  // 1. Fetch precomputed vectors and TF-IDF database on mount (extremely lightweight)
+  // 1. Fetch precomputed vectors and TF-IDF database when triggered (lazy loading)
   useEffect(() => {
+    if (!shouldLoadModel) return;
+
     fetch('/search_index.json')
       .then(res => res.json())
       .then(data => {
@@ -191,7 +193,7 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
       .catch(err => {
         console.error('Failed to load precomputed search index database:', err);
       });
-  }, []);
+  }, [shouldLoadModel]);
 
   // 2. Load the transformers.js pipeline dynamically inside browser when triggered
   useEffect(() => {
