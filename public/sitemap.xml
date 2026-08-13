@@ -10,7 +10,7 @@
 
   <!-- AI Model Library -->
   <url>
-    <loc>https://llm-learining-models.vercel.app/?tab=models</loc>
+    <loc>https://llm-learining-models.vercel.app/models</loc>
     <lastmod>2026-07-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>

@@ -59,6 +59,10 @@ describe('ChatTutor Component', () => {
       />
     );
 
+    // Expand chat widget
+    const chatHeader = screen.getByText(/Semantic AI Tutor/);
+    fireEvent.click(chatHeader);
+
     // Verify welcome message is in the document
     expect(screen.getByText(/I am your Semantic AI Tutor/)).toBeTruthy();
 
@@ -67,7 +71,7 @@ describe('ChatTutor Component', () => {
     fireEvent.change(input, { target: { value: 'Attention' } });
 
     // Submit form
-    const submitBtn = screen.getByRole('button', { name: '➜' });
+    const submitBtn = screen.getByRole('button', { name: 'Send message' });
     fireEvent.click(submitBtn);
 
     // Wait for the simulated delay and check response

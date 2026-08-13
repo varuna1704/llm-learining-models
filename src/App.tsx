@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { CURRICULUM, GLOSSARY, loadTopicDetails } from './data/curriculum';
 import type { TopicMetadata, Topic, SubDiagram, DiagramNode } from './data/curriculum';
+import { Homepage } from './components/homepage/Homepage';
+import { LabIndex } from './components/labs/LabIndex';
 import { DiagramCanvas } from './components/DiagramCanvas';
 import { ExplanationPanel } from './components/ExplanationPanel';
 import { ChatTutor } from './components/ChatTutor';
 import { ModelLibrary } from './components/ModelLibrary';
 import { GlossaryTooltip } from './components/GlossaryTooltip';
 import { LightboxModal } from './components/LightboxModal';
+import { ProgressModal } from './components/progress/ProgressModal';
+import { loadUserProgress } from './data/progress';
 import { MODELS_LAST_UPDATED } from './data/models';
 
 // URL Parsing Utility
@@ -20,12 +25,19 @@ const parseInitialState = () => {
   let initTopicSlug = CURRICULUM[0].slug;
   let initNodeId = '';
   let urlHasZoomOrPan = false;
+  let initTab: 'home' | 'diagrams' | 'labs' | 'models' = 'home';
   
   if (nodeMatch) {
     initTopicSlug = nodeMatch[1];
     initNodeId = nodeMatch[2];
+    initTab = 'diagrams';
   } else if (topicMatch) {
     initTopicSlug = topicMatch[1];
+    initTab = 'diagrams';
+  } else if (path.includes('/labs')) {
+    initTab = 'labs';
+  } else if (path.includes('/models')) {
+    initTab = 'models';
   }
   
   let initTopic = CURRICULUM.find(t => t.slug === initTopicSlug) || CURRICULUM[0];
@@ -46,32 +58,8 @@ const parseInitialState = () => {
     urlHasZoomOrPan = true;
   }
 
-  // Fallback to localStorage if at root path with no parameters
-  const isRootPath = path === '/' || path === '';
-  if (isRootPath && !urlHasZoomOrPan) {
-    const saved = localStorage.getItem('modelmap_last_state');
-    if (saved) {
-      try {
-        const state = JSON.parse(saved);
-        const savedTopic = CURRICULUM.find(t => t.slug === state.topicSlug);
-        if (savedTopic) {
-          return {
-            topic: savedTopic,
-            subDiagramId: state.subDiagramId || savedTopic.rootDiagramId,
-            nodeId: state.nodeId || '',
-            isSimple: !!state.isSimple,
-            zoom: parseFloat(state.zoom) || 1,
-            pan: state.pan || { x: 50, y: 50 },
-            hasParams: true
-          };
-        }
-      } catch (e) {
-        console.error('Failed to parse localStorage state:', e);
-      }
-    }
-  }
-
   return {
+    tab: initTab,
     topic: initTopic,
     subDiagramId: initSubDiagramId,
     nodeId: initNodeId,
@@ -85,12 +73,13 @@ const parseInitialState = () => {
 export default function App() {
   const parsed = useRef(parseInitialState());
   
-  const [activeTab, setActiveTab] = useState<'diagrams' | 'models'>('diagrams');
+  const [activeTab, setActiveTab] = useState<'home' | 'diagrams' | 'labs' | 'models'>(parsed.current.tab);
   const [activeTopic, setActiveTopic] = useState<TopicMetadata>(parsed.current.topic);
   const [activeTopicDetails, setActiveTopicDetails] = useState<Topic | null>(null);
   const [activeSubDiagramId, setActiveSubDiagramId] = useState<string>(parsed.current.subDiagramId);
   const [selectedNode, setSelectedNode] = useState<DiagramNode | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState<boolean>(true);
+  const [targetLabId, setTargetLabId] = useState<string>('tokenizer');
   
   // Canvas Zoom/Pan lifted state
   const [zoom, setZoom] = useState<number>(parsed.current.zoom);
@@ -115,9 +104,14 @@ export default function App() {
   // Lightbox Modal state
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
+  // Progress Modal state
+  const [isProgressOpen, setIsProgressOpen] = useState(false);
+
   // Scroll Position Memory per topic
   const scrollTopMapRef = useRef<{ [key: string]: number }>({});
   const mainContentRef = useRef<HTMLElement>(null);
+
+  const userProgress = loadUserProgress();
 
   const handleSelectTopic = useCallback((topic: TopicMetadata) => {
     if (mainContentRef.current) {
@@ -130,17 +124,15 @@ export default function App() {
     setIsPanelOpen(true);
   }, [activeTopic.slug]);
 
-  // Restore scroll position when topic resolves
-  useEffect(() => {
-    const savedScroll = scrollTopMapRef.current[activeTopic.slug];
-    if (savedScroll !== undefined && mainContentRef.current) {
-      setTimeout(() => {
-        if (mainContentRef.current) {
-          mainContentRef.current.scrollTop = savedScroll;
-        }
-      }, 50);
+  const handleNavigateTab = (tab: 'home' | 'diagrams' | 'labs' | 'models', subItem?: string) => {
+    setActiveTab(tab);
+    if (tab === 'labs' && subItem) {
+      setTargetLabId(subItem);
+    } else if (tab === 'diagrams' && subItem) {
+      const topic = CURRICULUM.find(t => t.slug === subItem);
+      if (topic) handleSelectTopic(topic);
     }
-  }, [activeTopic.slug]);
+  };
 
   // Dynamically load active topic chapter details (code-splitting)
   useEffect(() => {
@@ -152,14 +144,13 @@ export default function App() {
         if (!isCurrent) return;
         setActiveTopicDetails(details);
         
-        // If a nodeId was parsed from URL on boot, locate and focus it
         if (initialLoadNodeIdRef.current) {
           const sub = details.subDiagrams[activeSubDiagramId] || details.subDiagrams[details.rootDiagramId];
           const node = sub?.nodes.find(n => n.id === initialLoadNodeIdRef.current);
           if (node) {
             setSelectedNode(node);
           }
-          initialLoadNodeIdRef.current = ''; // Clear queue
+          initialLoadNodeIdRef.current = '';
         }
       })
       .catch(err => {
@@ -173,54 +164,41 @@ export default function App() {
 
   // Synchronize history URL search params and localStorage on changes
   const writeUrlState = useCallback((
+    tab: string,
     topicSlug: string,
     subDiagramId: string,
     nodeId: string | null,
     isSimpleDepth: boolean,
     z: number,
-    p: { x: number; y: number }
+    _p: { x: number; y: number }
   ) => {
-    let path = `/topic/${topicSlug}`;
-    if (nodeId) {
-      path += `/node/${nodeId}`;
+    let path = `/${tab}`;
+    if (tab === 'diagrams') {
+      path = `/topic/${topicSlug}`;
+      if (nodeId) {
+        path += `/node/${nodeId}`;
+      }
     }
     
     const params = new URLSearchParams();
-    if (subDiagramId && subDiagramId !== topicSlug && subDiagramId !== topicSlug.replace(/-/g, '_')) {
+    if (subDiagramId && subDiagramId !== topicSlug) {
       params.set('subDiagram', subDiagramId);
     }
     params.set('depth', isSimpleDepth ? 'simple' : 'detailed');
     if (z !== 1) {
       params.set('zoom', z.toFixed(2));
     }
-    if (p.x !== 50 || p.y !== 50) {
-      params.set('panX', Math.round(p.x).toString());
-      params.set('panY', Math.round(p.y).toString());
-    }
 
     const searchStr = params.toString();
     const newURL = path + (searchStr ? `?${searchStr}` : '');
-    
-    // Smooth URL replacement (avoiding history queue clogging during drags)
     window.history.replaceState(null, '', newURL);
-
-    // Save to localStorage as a fallback
-    localStorage.setItem('modelmap_last_state', JSON.stringify({
-      topicSlug,
-      subDiagramId,
-      nodeId: nodeId || '',
-      isSimple: isSimpleDepth,
-      zoom: z,
-      pan: p
-    }));
   }, []);
 
-  // Debounced URL updates for performance during drag interactions
   const debouncedUrlRef = useRef<any>(null);
   useEffect(() => {
     let timeoutId: any = null;
-    
     debouncedUrlRef.current = (
+      tab: string,
       topicSlug: string,
       subDiagramId: string,
       nodeId: string | null,
@@ -230,7 +208,7 @@ export default function App() {
     ) => {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
-        writeUrlState(topicSlug, subDiagramId, nodeId, isSimpleDepth, z, p);
+        writeUrlState(tab, topicSlug, subDiagramId, nodeId, isSimpleDepth, z, p);
       }, 250);
     };
 
@@ -239,10 +217,10 @@ export default function App() {
     };
   }, [writeUrlState]);
 
-  // Sync state changes to URL
   useEffect(() => {
     if (debouncedUrlRef.current) {
       debouncedUrlRef.current(
+        activeTab,
         activeTopic.slug,
         activeSubDiagramId,
         selectedNode?.id || null,
@@ -251,9 +229,8 @@ export default function App() {
         pan
       );
     }
-  }, [activeTopic, activeSubDiagramId, selectedNode, isSimple, zoom, pan]);
+  }, [activeTab, activeTopic, activeSubDiagramId, selectedNode, isSimple, zoom, pan]);
 
-  // Dynamic zoom/pan handlers
   const handleZoomChange = useCallback((newZoom: number) => {
     setZoom(newZoom);
   }, []);
@@ -270,10 +247,8 @@ export default function App() {
     ? (activeTopicDetails.subDiagrams[activeSubDiagramId] || activeTopicDetails.subDiagrams[activeTopicDetails.rootDiagramId])
     : null;
 
-  // Open the detail panel automatically when a node is selected or if overview/quiz is open
   const isExplanationOpen = isPanelOpen || !!selectedNode;
 
-  // Breadcrumbs calculation
   const getBreadcrumbs = (): string[] => {
     const list = [activeTopic.title];
     if (activeTopicDetails && activeSubDiagramId !== activeTopicDetails.rootDiagramId) {
@@ -314,7 +289,6 @@ export default function App() {
     setSelectedNode(null);
   }, []);
 
-  // Glossary Hover handlers
   const handleHoverTerm = (termId: string, event: React.MouseEvent) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setTooltipPosition({
@@ -329,7 +303,6 @@ export default function App() {
     setTooltipPosition(null);
   };
 
-  // Navigating from Chat Tutor deep-links
   const handleNavigateToNode = (topicSlug: string, subDiagramId: string, nodeId: string) => {
     const topic = CURRICULUM.find(t => t.slug === topicSlug);
     if (!topic) return;
@@ -338,8 +311,6 @@ export default function App() {
     setActiveTab('diagrams');
     setActiveTopic(topic);
     setActiveSubDiagramId(subDiagramId);
-    
-    // Select the target node
     if (nodeId) {
       initialLoadNodeIdRef.current = nodeId;
     } else {
@@ -350,7 +321,6 @@ export default function App() {
   const handleNavigateToGlossary = (glossaryId: string) => {
     const term = GLOSSARY[glossaryId];
     if (!term) return;
-    
     setTutorQuestionTrigger(term.term);
     setTimeout(() => setTutorQuestionTrigger(''), 100);
   };
@@ -362,83 +332,94 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {activeTab === 'diagrams' && activeTopicDetails ? (
+        <Helmet>
+          <title>{activeTopicDetails.title} | ModelMap</title>
+          <meta name="description" content={activeTopicDetails.summary || `Explore the visual interactive model explorer for ${activeTopicDetails.title}.`} />
+          <link rel="canonical" href={`https://llm-learining-models.vercel.app/topic/${activeTopic.slug}`} />
+        </Helmet>
+      ) : (
+        <Helmet>
+          <title>ModelMap | Visual AI & LLM Learning Board</title>
+          <meta name="description" content="Explore Large Language Models, Transformers, Prompting, RAG, and AI Agents through interactive click-to-explore flowcharts, a spec directory, and an AI tutor." />
+          <link rel="canonical" href="https://llm-learining-models.vercel.app/" />
+        </Helmet>
+      )}
       {/* Sidebar Navigation */}
       <aside className="sidebar">
-        <div className="brand-header">
+        <div className="brand-header" onClick={() => setActiveTab('home')} style={{ cursor: 'pointer' }}>
           <div className="brand-logo">🎛️</div>
           <h2 className="brand-title">ModelMap</h2>
         </div>
 
-        {/* Learning Paths */}
+        {/* Primary Main Menu */}
+        <div className="nav-section">
+          <h4 className="nav-label">Main Navigation</h4>
+          <ul className="nav-menu">
+            <li
+              className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
+              onClick={() => setActiveTab('home')}
+            >
+              🏠 Overview & Roadmap
+            </li>
+            <li
+              className={`nav-item ${activeTab === 'labs' ? 'active' : ''}`}
+              onClick={() => setActiveTab('labs')}
+            >
+              🧪 Interactive Labs (14)
+            </li>
+            <li
+              className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
+              onClick={() => setActiveTab('models')}
+            >
+              ⚡ Model Specs & Compare
+            </li>
+            <li
+              className="nav-item"
+              onClick={() => setIsProgressOpen(true)}
+              style={{ color: '#f59e0b', fontWeight: 600 }}
+            >
+              🏆 Achievements ({userProgress.unlockedBadgeIds.length}/9)
+            </li>
+          </ul>
+        </div>
+
+        {/* Flowchart Chapters Tree */}
         <div className="nav-section scrollable">
           <h4 className="nav-label">Flowchart Explorer</h4>
-          <ul
-            className="nav-menu"
-            role="tree"
-            aria-label="Flowchart Explorer Topics"
-          >
+          <ul className="nav-menu" role="tree" aria-label="Curriculum Topics">
             {CURRICULUM.map((topic) => {
               const isActive = activeTab === 'diagrams' && activeTopic.id === topic.id;
               return (
                 <li
                   key={topic.id}
                   role="treeitem"
-                  aria-level={1}
                   aria-selected={isActive}
-                  tabIndex={isActive ? 0 : -1}
-                  className={`nav-item ${isActive ? 'active' : ''}`}
-                  onClick={() => handleSelectTopic(topic)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                  style={{ listStyleType: 'none' }}
+                >
+                  <a
+                    href={`/topic/${topic.slug}`}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                    onClick={(e) => {
                       e.preventDefault();
                       handleSelectTopic(topic);
-                    } else if (e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      const next = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (next) next.focus();
-                    } else if (e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      const prev = e.currentTarget.previousElementSibling as HTMLElement;
-                      if (prev) prev.focus();
-                    }
-                  }}
-                >
-                  📊 {topic.title}
+                    }}
+                    style={{ textDecoration: 'none', display: 'flex' }}
+                  >
+                    📊 {topic.title}
+                  </a>
                 </li>
               );
             })}
           </ul>
         </div>
 
-        {/* Directory Search */}
-        <div className="nav-section">
-          <h4 className="nav-label">Models & Specifications</h4>
-          <ul className="nav-menu" role="tree" aria-label="Directory Section">
-            <li
-              role="treeitem"
-              aria-level={1}
-              aria-selected={activeTab === 'models'}
-              tabIndex={activeTab === 'models' ? 0 : -1}
-              className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
-              onClick={() => setActiveTab('models')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setActiveTab('models');
-                }
-              }}
-            >
-              ⚡ AI Model Library
-            </li>
-          </ul>
-        </div>
-
         {/* Footer */}
         <div className="nav-footer">
-          <div>Visual AI Learning App v1.0</div>
-          <div>React + TypeScript + CSS</div>
-          <div style={{ marginTop: '0.5rem', color: 'var(--color-accent)', fontWeight: 600 }}>
-            Model Directory (updated: {MODELS_LAST_UPDATED})
+          <div>Visual LLM Learning Platform v2.0</div>
+          <div>Interactive Labs + Flowchart Simulators</div>
+          <div style={{ marginTop: '0.2rem', color: 'var(--color-accent)', fontWeight: 600 }}>
+            Model Data: {MODELS_LAST_UPDATED}
           </div>
         </div>
       </aside>
@@ -449,14 +430,11 @@ export default function App() {
         <header className="main-header">
           <div className="header-title-container">
             <span className="header-title">
-              {activeTab === 'diagrams' ? activeTopic.title : 'AI Model Specifications Directory'}
+              {activeTab === 'home' && '🏠 ModelMap — Interactive LLM Architecture Playground'}
+              {activeTab === 'diagrams' && activeTopic.title}
+              {activeTab === 'labs' && '🧪 Interactive LLM Engineering Laboratories'}
+              {activeTab === 'models' && '⚡ AI Model Directory & Response Comparison'}
             </span>
-            {activeTab === 'diagrams' && (
-              <>
-                <span className="breadcrumb-separator">/</span>
-                <span className="header-subtitle">Click-to-Explore canvas</span>
-              </>
-            )}
           </div>
           
           <div className="header-actions">
@@ -468,54 +446,58 @@ export default function App() {
                     setSelectedNode(null);
                     setIsPanelOpen(true);
                   }}
-                  aria-label="Open Chapter Quiz"
                   style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', borderColor: 'var(--color-primary)', color: '#fff' }}
                 >
                   🧪 Take Quiz
                 </button>
-                <button
-                  className="btn"
-                  onClick={() => setIsLightboxOpen(true)}
-                  aria-label="Open Fullscreen Concept Lightbox Preview"
-                >
+                <button className="btn" onClick={() => setIsLightboxOpen(true)}>
                   🔍 Preview
-                </button>
-                <button 
-                  className="btn" 
-                  onClick={() => handleAskTutor(`Explain the overall flow of ${activeTopic.title}`)}
-                >
-                  🎓 Semantic Tutor
                 </button>
               </>
             )}
-            <button className="btn btn-primary" onClick={() => setActiveTab(activeTab === 'diagrams' ? 'models' : 'diagrams')}>
-              {activeTab === 'diagrams' ? 'View Model Specs' : 'Back to Diagrams'}
+
+            <button
+              className="btn"
+              onClick={() => setIsProgressOpen(true)}
+              style={{ borderColor: '#f59e0b', color: '#f59e0b', fontWeight: 600 }}
+            >
+              🏆 Streak: {userProgress.streakDays}🔥
+            </button>
+
+            <button 
+              className="btn btn-primary" 
+              onClick={() => handleAskTutor('Explain how an LLM works from first principles')}
+            >
+              🎓 Ask Tutor
             </button>
           </div>
         </header>
 
-        {/* Body Workspace */}
-        {activeTab === 'diagrams' ? (
+        {/* Body Workspace Routing */}
+        {activeTab === 'home' && (
+          <Homepage
+            onNavigateTab={handleNavigateTab}
+            onOpenProgress={() => setIsProgressOpen(true)}
+          />
+        )}
+
+        {activeTab === 'labs' && (
+          <LabIndex initialLabId={targetLabId} />
+        )}
+
+        {activeTab === 'models' && (
+          <ModelLibrary />
+        )}
+
+        {activeTab === 'diagrams' && (
           <>
             {activeTopicDetails === null ? (
-              <div className="diagram-canvas-loading" style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#0f172a',
-                color: 'var(--color-accent)',
-                fontFamily: 'var(--font-display)',
-                fontSize: '1.2rem',
-                gap: '1rem'
-              }}>
+              <div className="diagram-canvas-loading" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', color: 'var(--color-accent)' }}>
                 <span className="spin-loader" style={{ fontSize: '2rem' }}>🔄</span>
                 <span>Loading Diagram Flowcharts...</span>
               </div>
             ) : (
               <>
-                {/* Visual Canvas Board */}
                 <DiagramCanvas
                   subDiagram={activeSubDiagram!}
                   selectedNode={selectedNode}
@@ -529,7 +511,6 @@ export default function App() {
                   preventInitialCenter={preventInitialCenterRef.current}
                 />
 
-                {/* Slide-out detail drawer */}
                 <ExplanationPanel
                   node={selectedNode}
                   isOpen={isExplanationOpen}
@@ -546,8 +527,6 @@ export default function App() {
               </>
             )}
           </>
-        ) : (
-          <ModelLibrary />
         )}
 
         {/* Floatable grounded Chat Tutor chatbot */}
@@ -571,6 +550,12 @@ export default function App() {
           type={selectedNode ? selectedNode.type : 'Chapter Overview'}
           description={selectedNode ? selectedNode.shortExplanation : activeTopic.summary}
           details={selectedNode ? selectedNode.detailedExplanation : undefined}
+        />
+
+        {/* Achievements & Progress Modal */}
+        <ProgressModal
+          isOpen={isProgressOpen}
+          onClose={() => setIsProgressOpen(false)}
         />
       </main>
     </div>
