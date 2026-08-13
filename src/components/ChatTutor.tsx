@@ -160,12 +160,19 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
   const [modelLoading, setModelLoading] = useState(false);
   const [modelProgress, setModelProgress] = useState('');
   const [modelReady, setModelReady] = useState(false);
+  const [shouldLoadModel, setShouldLoadModel] = useState(false);
   const embedderRef = useRef<any>(null);
   const embeddingsDbRef = useRef<{ [id: string]: number[] } | null>(null);
 
-  // Initialize embedding model and fetch search index on mount
+  // Trigger model loading only when user expands the chat panel or a triggerQuestion is received
   useEffect(() => {
-    // 1. Fetch precomputed vectors and TF-IDF database
+    if (!isCollapsed || triggerQuestion) {
+      setShouldLoadModel(true);
+    }
+  }, [isCollapsed, triggerQuestion]);
+
+  // 1. Fetch precomputed vectors and TF-IDF database on mount (extremely lightweight)
+  useEffect(() => {
     fetch('/search_index.json')
       .then(res => res.json())
       .then(data => {
@@ -173,7 +180,6 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
         cachedSearchIndex = data.searchIndex;
         cachedIdfs = data.idfs;
         
-        // Map document vectors to include reference to searchIndex items
         cachedDocumentVectors = data.documentVectors.map((v: any) => {
           const doc = data.searchIndex.find((item: any) => item.targetId === v.targetId);
           return {
@@ -185,14 +191,20 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
       .catch(err => {
         console.error('Failed to load precomputed search index database:', err);
       });
+  }, []);
 
-    // 2. Load the transformers.js pipeline dynamically inside browser
+  // 2. Load the transformers.js pipeline dynamically inside browser when triggered
+  useEffect(() => {
+    if (!shouldLoadModel || embedderRef.current || modelLoading) return;
+
     const loadEmbedder = async () => {
       setModelLoading(true);
       setModelProgress('Initializing Semantic Tutor RAG engine...');
       try {
         const { env, pipeline } = await import('@xenova/transformers');
-        env.allowLocalModels = false;
+        // Enable local models self-hosting under public/models/
+        env.allowLocalModels = true;
+        env.localModelPath = '/models/';
 
         embedderRef.current = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
           progress_callback: (data: any) => {
@@ -215,7 +227,7 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
     };
 
     loadEmbedder();
-  }, []);
+  }, [shouldLoadModel]);
 
   // Helper to embed query text at runtime
   const getQueryEmbedding = async (text: string): Promise<number[] | null> => {
